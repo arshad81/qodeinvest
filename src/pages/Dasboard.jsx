@@ -7,92 +7,179 @@ import {
   Tooltip,
   CartesianGrid,
   ResponsiveContainer,
+  AreaChart,
+  Area,
 } from "recharts";
 
 import nav from "../data/nav.json";
 import Sidebar from "../components/Sidebar";
 
-// Prepare the data
-const navData = nav.map((item) => ({
-  date: item.date,
-  nav: item.nav,
-}));
+// Calculate drawdown
+let peak = -Infinity;
+const navData = [...nav]
+  .reverse()
+  .map((item) => {
+    const date = item.date;
+    const navValue = item.nav;
+    peak = Math.max(peak, navValue);
+    const drawdown = ((navValue / peak - 1) * 100);
+    return { date, nav: navValue, drawdown };
+  });
 
-export default function EquityCurve() {
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+// Calculate month-on-month returns
+const monthlyReturns = [];
+const navByMonth = {};
 
-  const filteredData = [...navData]
-    .reverse()
-    .filter((item) => {
-      const itemDate = new Date(item.date.split("-").reverse().join("-")); // convert DD-MM-YYYY → YYYY-MM-DD
-      const start = startDate ? new Date(startDate) : null;
-      const end = endDate ? new Date(endDate) : null;
+navData.forEach((item) => {
+  const date = new Date(item.date);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const key = `${year}-${month.toString().padStart(2, "0")}`;
 
-      if (start && end) return itemDate >= start && itemDate <= end;
-      if (start) return itemDate >= start;
-      if (end) return itemDate <= end;
-      return true;
+  if (!navByMonth[key]) navByMonth[key] = [];
+  navByMonth[key].push(item.nav);
+});
+
+for (const key in navByMonth) {
+  const navs = navByMonth[key];
+  const startNav = navs[0];
+  const endNav = navs[navs.length - 1];
+  const returnPercent = ((endNav / startNav - 1) * 100).toFixed(2);
+  monthlyReturns.push({ month: key, return: Number(returnPercent) });
+}
+
+// Calculate year-on-year returns
+const yearlyReturns = {};
+const navByYear = {};
+
+navData.forEach((item) => {
+  const date = new Date(item.date);
+  const year = date.getFullYear();
+
+  if (!navByYear[year]) navByYear[year] = [];
+  navByYear[year].push(item.nav);
+});
+
+for (const year in navByYear) {
+  const navs = navByYear[year];
+  const startNav = navs[0];
+  const endNav = navs[navs.length - 1];
+  const returnPercent = ((endNav / startNav - 1) * 100).toFixed(2);
+  yearlyReturns[year] = Number(returnPercent);
+}
+
+// Extract unique years
+const years = Object.keys(yearlyReturns).sort();
+
+export default function PortfolioPage() {
+  // Default to All
+  const [selectedYear, setSelectedYear] = useState(null);
+
+  // Filter NAV data by year or show all
+  const filteredDataByYear = selectedYear
+    ? navData.filter((item) => new Date(item.date).getFullYear() === selectedYear)
+    : navData;
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const getMonthlyReturnRow = (year) => {
+    return monthNames.map((m, idx) => {
+      const monthKey = `${year}-${(idx + 1).toString().padStart(2, "0")}`;
+      const monthObj = monthlyReturns.find(item => item.month === monthKey);
+      return monthObj && !isNaN(monthObj.return) ? monthObj.return : "All";
     });
-
+  };
 
   return (
     <div className="md:flex h-screen">
       <Sidebar />
-      <div className="md:ml-64 w-full">
-        <div className=" mx-auto p-4 bg-white rounded-lg ">
-          <div className="md:flex justify-between items-center">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold ">Equity Curve</h2>
-              <div className="flex justify-between md:justify-start gap-x-4">
-                <p>Live Since {navData[0].date}</p>
-                <p className="text-red-500 cursor-pointer" onClick={() => { setStartDate(''); setEndDate('') }}>Reset</p>
-              </div>
+      <div className="md:ml-64 w-full overflow-y-auto p-4">
+        <div className="mx-auto bg-white rounded-lg p-4">
+
+          {/* Header & Year Filter */}
+          <div className="md:flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-lg font-bold">Portfolio Overview</h2>
+              <p>Live Since {navData[0].date}</p>
             </div>
 
-            {/* Date inputs */}
-            <div className="flex gap-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium mb-1">Start Date</label>
-                <input
-                  type="date"
-                  className="border rounded p-1"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">End Date</label>
-                <input
-                  type="date"
-                  className="border rounded p-1"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-              </div>
+            <div className="flex items-center gap-4 mt-4 md:mt-0">
+              <label className="font-medium">Select Year:</label>
+              <select
+                value={selectedYear ?? "All"}
+                onChange={(e) => setSelectedYear(e.target.value === "All" ? null : Number(e.target.value))}
+                className="border rounded p-1"
+              >
+                <option value="All">All</option>
+                {years.map((year) => (
+                  !isNaN(year) &&
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
             </div>
           </div>
-
-          {/* Chart */}
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={filteredData}>
+          <h3 className="font-semibold mt-6 mb-2">
+            {selectedYear ? `Monthly Returns - ${selectedYear}` : "Yearly Returns"}
+          </h3>
+          <div className="overflow-x-auto mb-4">
+            <table className="min-w-full border border-gray-200 rounded-lg text-center">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2">{selectedYear ? "Month" : "Year"}</th>
+                  {(selectedYear ? monthNames : years).map((item) => (
+                    isNaN(item) ?
+                      <th key={item} className="px-4 py-2">{"All"}</th> :
+                      <th key={item} className="px-4 py-2">{item}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="px-4 py-2 font-medium">Return (%)</td>
+                  {(selectedYear
+                    ? getMonthlyReturnRow(selectedYear)
+                    : years.map(y => yearlyReturns[y])
+                  ).map((r, idx) => (
+                    <td
+                      key={idx}
+                      className={`px-4 py-2 ${r === "All" ? "" : r >= 0 ? "text-green-600" : "text-red-600"}`}
+                    >
+                      {isNaN(r) ? "All" : r + "%"}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {/* Equity Curve */}
+          <h3 className="font-semibold mb-2">Equity Curve</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={filteredDataByYear}>
               <CartesianGrid stroke="#e0e0e0" strokeDasharray="5 5" />
               <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="nav"
-                stroke="#4f46e5"
-                strokeWidth={2}
-                dot={false}
-              />
+              <Line type="monotone" dataKey="nav" stroke="#4f46e5" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
+
+          {/* Drawdown Chart */}
+          <h3 className="font-semibold mt-6 mb-2">Drawdown</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={filteredDataByYear}>
+              <CartesianGrid stroke="#e0e0e0" strokeDasharray="5 5" />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
+              <Area type="monotone" dataKey="drawdown" stroke="#dc2626" fill="#dc2626" fillOpacity={0.3} />
+            </AreaChart>
+          </ResponsiveContainer>
+
+
+
+
         </div>
       </div>
     </div>
-
   );
 }
