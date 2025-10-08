@@ -26,15 +26,19 @@ const navData = [...nav]
     return { date, nav: navValue, drawdown };
   });
 
-// Calculate month-on-month returns
 const monthlyReturns = [];
 const navByMonth = {};
+// Object to store date and nav
 
 navData.forEach((item) => {
-  const date = new Date(item.date);
+  const parts = item.date.split("-"); 
+  // Splitting to get year, month, day as per Date format
+  const date = new Date(parts[2], parts[1] - 1, parts[0]); 
+
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const key = `${year}-${month.toString().padStart(2, "0")}`;
+  // padStart to have month in 2 digits as per Date format
 
   if (!navByMonth[key]) navByMonth[key] = [];
   navByMonth[key].push(item.nav);
@@ -53,9 +57,9 @@ const yearlyReturns = {};
 const navByYear = {};
 
 navData.forEach((item) => {
-  const date = new Date(item.date);
+    const parts = item.date.split("-"); 
+  const date = new Date(parts[2], parts[1] - 1, parts[0]); 
   const year = date.getFullYear();
-
   if (!navByYear[year]) navByYear[year] = [];
   navByYear[year].push(item.nav);
 });
@@ -68,14 +72,12 @@ for (const year in navByYear) {
   yearlyReturns[year] = Number(returnPercent);
 }
 
-// Extract unique years
 const years = Object.keys(yearlyReturns).sort();
 
 export default function PortfolioPage() {
   // Default to All
   const [selectedYear, setSelectedYear] = useState(null);
 
-  // Filter NAV data by year or show all
   const filteredDataByYear = selectedYear
     ? navData.filter((item) => new Date(item.date).getFullYear() === selectedYear)
     : navData;
@@ -86,7 +88,8 @@ export default function PortfolioPage() {
     return monthNames.map((m, idx) => {
       const monthKey = `${year}-${(idx + 1).toString().padStart(2, "0")}`;
       const monthObj = monthlyReturns.find(item => item.month === monthKey);
-      return monthObj && !isNaN(monthObj.return) ? monthObj.return : "All";
+      console.log(monthObj)
+      return monthObj && !isNaN(monthObj.return) ? monthObj.return : "N";
     });
   };
 
@@ -127,9 +130,8 @@ export default function PortfolioPage() {
                 <tr>
                   <th className="px-4 py-2">{selectedYear ? "Month" : "Year"}</th>
                   {(selectedYear ? monthNames : years).map((item) => (
-                    isNaN(item) ?
-                      <th key={item} className="px-4 py-2">{"All"}</th> :
-                      <th key={item} className="px-4 py-2">{item}</th>
+
+                    <th key={item} className="px-4 py-2">{item}</th>
                   ))}
                 </tr>
               </thead>
@@ -144,7 +146,7 @@ export default function PortfolioPage() {
                       key={idx}
                       className={`px-4 py-2 ${r === "All" ? "" : r >= 0 ? "text-green-600" : "text-red-600"}`}
                     >
-                      {isNaN(r) ? "All" : r + "%"}
+                      {isNaN(r) ? "0%" : r + "%"}
                     </td>
                   ))}
                 </tr>
